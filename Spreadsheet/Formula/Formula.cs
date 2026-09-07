@@ -11,6 +11,8 @@
 //   </para>
 // </summary>
 
+using System.Text;
+
 namespace Formula;
 
 using System.Text.RegularExpressions;
@@ -53,13 +55,13 @@ public class Formula
     {
         // This Is The Starting Case
         Unset,
-        
+        // Parenthesis Group
         OpenParen,
         CloseParen,
-        
+        // Value Group
         Variable,
         Number,
-        
+        // Operator Group
         AddOp,
         SubOp,
         MulOp,
@@ -94,7 +96,13 @@ public class Formula
     ///     The Format They Will Be Stored In Will Match What Is Expected In The Formula Canonical Form:
     ///     i.e. x7 = X7, abc50 = ABC50, A5 = A5
     /// </summary>
-    private HashSet<string> formulaVariables;
+    private HashSet<string> _formulaVariables;
+
+    /// <summary>
+    ///     This String Will Be Built During The Formula Constructor (Because It Will Likely Not Be Changed)
+    ///     Additionally, Its Not Worth Rebuilding The String Each Time The User Calls ToString()
+    /// </summary>
+    private String _canonicalString;
     
     /// <summary>
     ///   Initializes a new instance of the <see cref="Formula"/> class.
@@ -125,8 +133,6 @@ public class Formula
     /// <param name="formula"> The string representation of the formula to be created.</param>
     public Formula( string formula )
     {
-        // FIXME: implement your code here
-        
         // Rule 1 Handler: There Must Be At Least 1 Token
         if (formula.Length <= 0)
         {
@@ -136,7 +142,7 @@ public class Formula
         List<String> tokens = GetTokens(formula);
         
         // Rule 5 Handler: The First Token Must Be A Number, Variable, Or Open Parenthesis
-        // Note, At the moment there is no need to save the double from "TryParse" from either of the following statements as the value wont be used
+        // Note, At The Moment There Is No Need To Save The Double From "TryParse" From Either Of The Following Statements As The Value Won't Be Used
         if (!Double.TryParse(tokens.First(), out double _) && !IsVar(tokens.First()) && tokens.First() != "(")
         {
             throw new FormulaFormatException("Formula Must Start With A Number, A Variable, Or An Open Parenthesis");
@@ -151,7 +157,10 @@ public class Formula
         // From Here On Out, The Rules Will Involve State
         
         // Here We Initialize The formulaVariables Variable So That We Are Not Trying To Access A Null Reference/Pointer
-        formulaVariables = new HashSet<string>();
+        _formulaVariables = new HashSet<string>();
+        
+        // Canonical String Builder, Once Done Iterating Over The Tokens, We Can Convert To A String And Assign _canonicalString To Its Value
+        StringBuilder canStrBuilder = new StringBuilder();
         
         // paren = The Amount Of Total Parenthesis We Encounter, '(' = +1, ')' = -1
         //      If paren == 0, Then The Formula Is Balanced, If It Ever Reaches Negatives, Then We Know It Violates The Closing Parenthesis Rule (Rule 3)
@@ -170,11 +179,13 @@ public class Formula
             if (token == "(")
             {
                 paren++;
+                canStrBuilder.Append("(");
                 curTokenType = TokenType.OpenParen;
             }
             else if (token == ")")
             {
                 paren--;
+                canStrBuilder.Append(")");
                 curTokenType = TokenType.CloseParen;
                 // Rule 3 Handler: Because Of The Nature Of Rule 3, At __Any__ Point If There Is More Closing Parenthesis, We Need To Give An Error
                 if (paren < 0)
@@ -184,28 +195,35 @@ public class Formula
             }
             else if (token == "+") 
             {
+                canStrBuilder.Append("+");
                 curTokenType = TokenType.AddOp;
             }
             else if (token == "-") 
             {
+                canStrBuilder.Append("-");
                 curTokenType = TokenType.SubOp;
             }
             else if (token == "*") 
             {
+                canStrBuilder.Append("*");   
                 curTokenType = TokenType.MulOp;
             }
             else if (token == "/") 
             {
+                canStrBuilder.Append("/");
                 curTokenType = TokenType.DivOp;
             }
             else if (Double.TryParse(token, out double number))
             {
+                // number Should Be In The Correct Form As We Expect "TryParse" To Have The Correct Implementation Of The Number's Canonical Form
+                canStrBuilder.Append(number);
                 curTokenType = TokenType.Number;
             }
             else if (IsVar(token))
             {
                 // Since "IsVar(...)" Is Expected To Work, All We Need To Handle Here Is Turning The Variable Into Its Canonical Form (i.e. Uppercased Letters Followed By Numbers)
-                formulaVariables.Add(token.ToUpper());
+                _formulaVariables.Add(token.ToUpper());
+                canStrBuilder.Append(token.ToUpper());
                 curTokenType = TokenType.Variable;
             }
             // Rule 2 Handler: In This Case, We Cannot Figure Out What The Token Type Is, So We Must Throw An Error Stating There Is An Invalid Token
@@ -241,7 +259,7 @@ public class Formula
             throw new FormulaFormatException("Opening And Closing Parenthesis Must Balanced");
         }
 
-        
+        _canonicalString = canStrBuilder.ToString();
     }
 
     /// <summary>
@@ -263,7 +281,7 @@ public class Formula
     public ISet<string> GetVariables( )
     {
         // This Will Simply Return The Variables That Were Read Upon Creation Of The Formula Object Via The Constructor
-        return formulaVariables;
+        return _formulaVariables;
     }
 
     /// <summary>
@@ -301,8 +319,7 @@ public class Formula
     /// </returns>
     public override string ToString( )
     {
-        // FIXME: add your code here.
-        return string.Empty;
+        return _canonicalString;
     }
 
     /// <summary>
