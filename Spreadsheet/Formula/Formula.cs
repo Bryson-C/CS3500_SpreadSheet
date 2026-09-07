@@ -45,11 +45,57 @@ using System.Text.RegularExpressions;
 public class Formula
 {
     /// <summary>
+    ///     This Enum Is Used For Classifying The Last Token Read When Iterating Over A Token List.
+    ///     The Values Themselves Are Not Important, __BUT__ Their Ranges Are!! The Enum Is Used To Avoid Magic Numbers Inside The Code Base, As Well As Check (In A Single Check If A TokenType Belongs To An Operator For Example) 
+    ///     Additionally, It Makes Comparing Logic To Implementation Easier  
+    /// </summary>
+    private enum TokenType
+    {
+        // This Is The Starting Case
+        Unset,
+        
+        OpenParen,
+        CloseParen,
+        
+        Variable,
+        Number,
+        
+        AddOp,
+        SubOp,
+        MulOp,
+        DivOp,
+    }
+
+    /// <summary>
+    ///     Checks Whether A Give Token Type Is An Operator Or Not.
+    ///     Note: It Is Important That AddOp Comes First And DivOp Comes Last In The Enum __AND__ That All Operator Tokens Are Grouped Together 
+    /// </summary>
+    /// <param name="type">
+    ///     The Token Needing To Be Checked If It Is A Variable Or Not
+    /// </param>
+    /// <returns>
+    ///     Returns True If The Token Type Is Any Of: AddOp, SubOp, MulOp, DivOp
+    ///     Otherwise False
+    /// </returns>
+    bool TokenTypeIsOperator(TokenType type)
+    {
+        return (type >= TokenType.AddOp && type <= TokenType.DivOp);
+    }
+    
+    
+    /// <summary>
     ///   All variables are letters followed by numbers.  This pattern
     ///   represents valid variable name strings.
     /// </summary>
     private const string VariableRegExPattern = @"[a-zA-Z]+\d+";
 
+    /// <summary>
+    ///     The formulaVariables List Will Store All Encountered Variables From A Given Formula.
+    ///     The Format They Will Be Stored In Will Match What Is Expected In The Formula Canonical Form:
+    ///     i.e. x7 = X7, abc50 = ABC50, A5 = A5
+    /// </summary>
+    private HashSet<string> formulaVariables;
+    
     /// <summary>
     ///   Initializes a new instance of the <see cref="Formula"/> class.
     ///   <para>
@@ -80,6 +126,122 @@ public class Formula
     public Formula( string formula )
     {
         // FIXME: implement your code here
+        
+        // Rule 1 Handler: There Must Be At Least 1 Token
+        if (formula.Length <= 0)
+        {
+            throw new FormulaFormatException("Formula Must Not Be Empty");
+        }
+        
+        List<String> tokens = GetTokens(formula);
+        
+        // Rule 5 Handler: The First Token Must Be A Number, Variable, Or Open Parenthesis
+        // Note, At the moment there is no need to save the double from "TryParse" from either of the following statements as the value wont be used
+        if (!Double.TryParse(tokens.First(), out double _) && !IsVar(tokens.First()) && tokens.First() != "(")
+        {
+            throw new FormulaFormatException("Formula Must Start With A Number, A Variable, Or An Open Parenthesis");
+        } 
+        
+        // Rule 6 Handler: The Last Token Must Be A Number, Variable, Or Closing Parenthesis
+        if (!Double.TryParse(tokens.Last(), out double _) && !IsVar(tokens.Last()) && tokens.Last() != ")")
+        {
+            throw new FormulaFormatException("Formula Must End With A Number, A Variable, Or An Open Parenthesis");
+        }
+
+        // From Here On Out, The Rules Will Involve State
+        
+        // Here We Initialize The formulaVariables Variable So That We Are Not Trying To Access A Null Reference/Pointer
+        formulaVariables = new HashSet<string>();
+        
+        // paren = The Amount Of Total Parenthesis We Encounter, '(' = +1, ')' = -1
+        //      If paren == 0, Then The Formula Is Balanced, If It Ever Reaches Negatives, Then We Know It Violates The Closing Parenthesis Rule (Rule 3)
+        int paren = 0;
+        
+        // curTokenType = The Token That Is Currently Being Processed, The Purpose Of Its Existence Is To Ensure That Following Rules Can Be Checked Efficiently
+        //      And lastTokenType Is Assigned To curTokenType At The End Of Each Loop
+        TokenType curTokenType;
+        
+        // lastTokenType = The Last Token's Type That Was Encountered. There Is No Need To Handle Cases Where The Loop Encounters An Invalid Type As The Constructor Should Give An Error
+        //      lastTokenType Will Be Set At The End Of Each Iteration Of The Tokens Loop To The Value Of curTokenType
+        TokenType lastTokenType = TokenType.Unset;
+        
+        foreach (string token in tokens)
+        {
+            if (token == "(")
+            {
+                paren++;
+                curTokenType = TokenType.OpenParen;
+            }
+            else if (token == ")")
+            {
+                paren--;
+                curTokenType = TokenType.CloseParen;
+                // Rule 3 Handler: Because Of The Nature Of Rule 3, At __Any__ Point If There Is More Closing Parenthesis, We Need To Give An Error
+                if (paren < 0)
+                {
+                    throw new FormulaFormatException("Formula Must Never Have More Closing Parenthesis Than Opening Parenthesis");
+                }
+            }
+            else if (token == "+") 
+            {
+                curTokenType = TokenType.AddOp;
+            }
+            else if (token == "-") 
+            {
+                curTokenType = TokenType.SubOp;
+            }
+            else if (token == "*") 
+            {
+                curTokenType = TokenType.MulOp;
+            }
+            else if (token == "/") 
+            {
+                curTokenType = TokenType.DivOp;
+            }
+            else if (Double.TryParse(token, out double number))
+            {
+                curTokenType = TokenType.Number;
+            }
+            else if (IsVar(token))
+            {
+                // Since "IsVar(...)" Is Expected To Work, All We Need To Handle Here Is Turning The Variable Into Its Canonical Form (i.e. Uppercased Letters Followed By Numbers)
+                formulaVariables.Add(token.ToUpper());
+                curTokenType = TokenType.Variable;
+            }
+            // Rule 2 Handler: In This Case, We Cannot Figure Out What The Token Type Is, So We Must Throw An Error Stating There Is An Invalid Token
+            else
+            {
+                throw new FormulaFormatException("Formula Must Only Contain Tokens: (, ), +, -, *, /, Variables, And Numbers"); 
+            }
+
+            // Check For Incompatibilities Of Following Tokens (i.e. curTokenType Following lastTokenType)
+            
+            // Rule 7 Handler: Token Types Following An Open Parenthesis Or Operator Must Be A Number, Variable, Or Open Parenthesis
+            // Note: This Checks To See If The Condition Above Can Pass, And Inverts It So When Its False It Can Throw An Error
+            if (
+                (lastTokenType == TokenType.OpenParen || TokenTypeIsOperator(lastTokenType)) && 
+                !(curTokenType == TokenType.OpenParen || curTokenType == TokenType.Number || curTokenType == TokenType.Variable))
+            {
+                throw new FormulaFormatException("A Token Following An Open Parenthesis Or Operator Must Be A Number, Variable, Or Opening Parenthesis");
+            }
+            // Rule 8 Handler: Tokens Following A Number, Variable, Or Closing Parenthesis Must Be An Operator Or Closing Parenthesis
+            if (
+                (lastTokenType == TokenType.Number || lastTokenType == TokenType.Variable || lastTokenType == TokenType.CloseParen) && 
+                !(TokenTypeIsOperator(curTokenType) || curTokenType == TokenType.CloseParen))
+            {
+                throw new FormulaFormatException("A Token Following A Number, Variable, Or Closing Parenthesis Must be An Operator Or Closing Parenthesis");
+            }
+            
+            lastTokenType = curTokenType;
+        }
+
+        // Rule 4 Handler: Make Sure The Parenthesis Are Balanced (Explained Above)
+        if (paren != 0)
+        {
+            throw new FormulaFormatException("Opening And Closing Parenthesis Must Balanced");
+        }
+
+        
     }
 
     /// <summary>
@@ -100,8 +262,8 @@ public class Formula
     /// <returns> the set of variables (string names) representing the variables referenced by the formula. </returns>
     public ISet<string> GetVariables( )
     {
-        // FIXME: implement your code here
-        return new HashSet<string>();
+        // This Will Simply Return The Variables That Were Read Upon Creation Of The Formula Object Via The Constructor
+        return formulaVariables;
     }
 
     /// <summary>
