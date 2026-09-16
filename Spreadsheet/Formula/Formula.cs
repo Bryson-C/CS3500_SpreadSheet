@@ -90,14 +90,7 @@ public class Formula
     ///   represents valid variable name strings.
     /// </summary>
     private const string VariableRegExPattern = @"[a-zA-Z]+\d+";
-
-    /// <summary>
-    ///     The formulaVariables List Will Store All Encountered Variables From A Given Formula.
-    ///     The Format They Will Be Stored In Will Match What Is Expected In The Formula Canonical Form:
-    ///     i.e. x7 = X7, abc50 = ABC50, A5 = A5
-    /// </summary>
-    private HashSet<string> _formulaVariables;
-
+    
     /// <summary>
     ///     This String Will Be Built During The Formula Constructor (Because It Will Likely Not Be Changed)
     ///     Additionally, Its Not Worth Rebuilding The String Each Time The User Calls ToString()
@@ -155,9 +148,6 @@ public class Formula
         }
 
         // From Here On Out, The Rules Will Involve State
-        
-        // Here We Initialize The formulaVariables Variable So That We Are Not Trying To Access A Null Reference/Pointer
-        _formulaVariables = new HashSet<string>();
         
         // Canonical String Builder, Once Done Iterating Over The Tokens, We Can Convert To A String And Assign _canonicalString To Its Value
         StringBuilder canStrBuilder = new StringBuilder();
@@ -222,7 +212,6 @@ public class Formula
             else if (IsVar(token))
             {
                 // Since "IsVar(...)" Is Expected To Work, All We Need To Handle Here Is Turning The Variable Into Its Canonical Form (i.e. Uppercased Letters Followed By Numbers)
-                _formulaVariables.Add(token.ToUpper());
                 canStrBuilder.Append(token.ToUpper());
                 curTokenType = TokenType.Variable;
             }
@@ -280,8 +269,15 @@ public class Formula
     /// <returns> the set of variables (string names) representing the variables referenced by the formula. </returns>
     public ISet<string> GetVariables( )
     {
-        // This Will Simply Return The Variables That Were Read Upon Creation Of The Formula Object Via The Constructor
-        return _formulaVariables;
+        HashSet<string> variables = new HashSet<string>();
+        foreach (String token in GetTokens(_canonicalString))
+        {
+            if (IsVar(token))
+            {
+                variables.Add(token);
+            }
+        }
+        return variables;
     }
 
     /// <summary>

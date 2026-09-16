@@ -341,4 +341,11 @@ public class FormulaSyntaxTests
     {
         _ = new Formula( "(1+1)" );
     }
+
+
+    [TestMethod]
+    public void FormulaConstructor_TooManyRightParenthesis_Invalid()
+    {
+        Assert.Throws<FormulaFormatException>(() => _ = new Formula("())"));
+    }
 }
