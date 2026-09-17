@@ -6,8 +6,6 @@
 //   (Clarified names in solution/project structure)
 // Version 1.3 - H. James de St. Germain Fall 2024
 
-using System.Collections;
-
 namespace DependencyGraph;
 
 /// <summary>

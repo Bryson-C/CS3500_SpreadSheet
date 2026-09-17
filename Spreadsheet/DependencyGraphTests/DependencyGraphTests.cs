@@ -247,13 +247,89 @@ public sealed class DependencyGraphTests
         Assert.AreEqual(1, dg.Size);
     }
     
-    
-    /*
-    [TestMethod] public void DG_HasDependencies_True() { }
-    [TestMethod] public void DG_HasDependencies_True() { }
-    [TestMethod] public void DG_HasDependencies_True() { }
-    [TestMethod] public void DG_HasDependencies_True() { }
-    [TestMethod] public void DG_HasDependencies_True() { }
-    [TestMethod] public void DG_HasDependencies_True() { }
-    */
+    /// <summary>
+    ///     This code is meant to stress test the dependency graph. The code is given by the CS3500 course
+    ///     The code creates around 200 variables and modifies them in various ways including:
+    ///         adding them as dependents/dependees
+    ///         removing them from the dependency graph (both dependents and dependees)
+    ///         then adding some of the variables back into the dependency graph
+    ///         removing some once more (basically the "blender tactic" is put into play)
+    ///     Once all the operations have been complete, the test will confirm everything resulted as expected
+    ///     The goal of using so many operations in one test is to ensure the code function in a fast amount of time
+    ///     (i.e. not o(n^2) or similar)
+    /// </summary>
+    [TestMethod]
+    [Timeout( 2000, CooperativeCancellation = true)]  // 2 second run time limit
+    public void DG_StressTest()
+    {
+        DependencyGraph dg = new();
+
+        // A bunch of strings to use, create variables "A0" to "A199"
+        const int size = 200;
+        string[] letters = new string[size];
+        for ( int i = 0; i < size; i++ )
+        {
+            letters[i] = string.Empty + ( (char) ( 'a' + i ) );
+        }
+
+        // The correct answers, create empty sets of dependents/dependees for a theoretical `size` amount of variables
+        HashSet<string>[] dependents = new HashSet<string>[size];
+        HashSet<string>[] dependees = new HashSet<string>[size];
+        for ( int i = 0; i < size; i++ )
+        {
+            dependents[i] = [];
+            dependees[i] = [];
+        }
+
+        // Add a bunch of dependencies
+        for ( int i = 0; i < size; i++ )
+        {
+            for ( int j = i + 1; j < size; j++ )
+            {
+                dg.AddDependency( letters[i], letters[j] );
+                dependents[i].Add( letters[j] );
+                dependees[j].Add( letters[i] );
+            }
+        }
+
+        // Remove a bunch of dependencies
+        for ( int i = 0; i < size; i++ )
+        {
+            for ( int j = i + 4; j < size; j += 4 )
+            {
+                dg.RemoveDependency( letters[i], letters[j] );
+                dependents[i].Remove( letters[j] );
+                dependees[j].Remove( letters[i] );
+            }
+        }
+
+        // Add some back
+        for ( int i = 0; i < size; i++ )
+        {
+            for ( int j = i + 1; j < size; j += 2 )
+            {
+                dg.AddDependency( letters[i], letters[j] );
+                dependents[i].Add( letters[j] );
+                dependees[j].Add( letters[i] );
+            }
+        }
+
+        // Remove some more
+        for ( int i = 0; i < size; i += 2 )
+        {
+            for ( int j = i + 3; j < size; j += 3 )
+            {
+                dg.RemoveDependency( letters[i], letters[j] );
+                dependents[i].Remove( letters[j] );
+                dependees[j].Remove( letters[i] );
+            }
+        }
+
+        // Make sure everything is right
+        for ( int i = 0; i < size; i++ )
+        {
+            Assert.IsTrue( dependents[i].SetEquals( new HashSet<string>( dg.GetDependents( letters[i] ) ) ) );
+            Assert.IsTrue( dependees[i].SetEquals( new HashSet<string>( dg.GetDependees( letters[i] ) ) ) );
+        }
+    }
 }
