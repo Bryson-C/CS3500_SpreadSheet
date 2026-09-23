@@ -84,7 +84,6 @@ public class Formula
         return (type >= TokenType.AddOp && type <= TokenType.DivOp);
     }
     
-    
     /// <summary>
     ///   All variables are letters followed by numbers.  This pattern
     ///   represents valid variable name strings.
@@ -95,7 +94,7 @@ public class Formula
     ///     This String Will Be Built During The Formula Constructor (Because It Will Likely Not Be Changed)
     ///     Additionally, Its Not Worth Rebuilding The String Each Time The User Calls ToString()
     /// </summary>
-    private String _canonicalString;
+    private readonly String _canonicalString;
     
     /// <summary>
     ///   Initializes a new instance of the <see cref="Formula"/> class.
@@ -127,7 +126,7 @@ public class Formula
     public Formula( string formula )
     {
         // Rule 1 Handler: There Must Be At Least 1 Token
-        if (formula.Length <= 0)
+        if (formula.Trim().Length <= 0)
         {
             throw new FormulaFormatException("Formula Must Not Be Empty");
         }
@@ -383,6 +382,289 @@ public class Formula
 
         return results;
     }
+
+    /// <summary>
+    ///   <para>
+    ///     Reports whether f1 == f2, using the notion of equality from the <see cref="Equals"/> method.
+    ///   </para>
+    /// </summary>
+    /// <param name="f1"> The first of two formula objects. </param>
+    /// <param name="f2"> The second of two formula objects. </param>
+    /// <returns> true if the two formulas are the same.</returns>
+    public static bool operator ==( Formula f1, Formula f2 )
+    {
+        // A Wrapper Of Equals (But It Looks Better When Operator Overloaded)
+        return f1.Equals(f2);
+    }
+
+    /// <summary>
+    ///   <para>
+    ///     Reports whether f1 != f2, using the notion of equality from the <see cref="Equals"/> method.
+    ///   </para>
+    /// </summary>
+    /// <param name="f1"> The first of two formula objects. </param>
+    /// <param name="f2"> The second of two formula objects. </param>
+    /// <returns> true if the two formulas are not equal to each other.</returns>
+    public static bool operator !=( Formula f1, Formula f2 )
+    {
+        // Just The Inverse Of Equals So We Don't Have To Worry Much About This: If One Works The Others Should Too
+        return !f1.Equals(f2);
+    }
+
+    /// <summary>
+    ///   <para>
+    ///     Determines if two formula objects represent the same formula.
+    ///   </para>
+    ///   <para>
+    ///     By definition, if the parameter is null or does not reference
+    ///     a Formula Object then return false.
+    ///   </para>
+    ///   <para>
+    ///     Two Formulas are considered equal if their canonical string representations
+    ///     (as defined by ToString) are equal.
+    ///   </para>
+    /// </summary>
+    /// <param name="obj"> The other object.</param>
+    /// <returns>
+    ///   True if the two objects represent the same formula.
+    /// </returns>
+    public override bool Equals( object? obj )
+    {
+        if (obj == null || obj.GetType() != typeof(Formula))
+        {
+            return false;
+        }
+
+        Formula other = (Formula)obj;
+        return _canonicalString == other.ToString();
+    }
+
+    /// <summary>
+    ///     Takes Both Stacks For The 2 Stack Algorithm. Pops Twice From The Value Stack And Once From The Operator Stack
+    ///     Then Applies The Operator To Both Operands. Checking Both Stacks Must be Done Outside Of This Function As
+    ///     This Function Simply Assumes Both Stacks Are Capable Of Being Popped Safely
+    /// </summary>
+    /// <param name="operatorStack">The Stack Of Operators</param>
+    /// <param name="valueStack">The Stack Of Values</param>
+    /// <param name="val">
+    ///     The Result Of The Operation On The Two Operands,
+    ///     If The Operation Couldn't Be Applied, The Value Is Equal To Double.MinValue
+    /// </param>
+    /// <returns> Returns True If The Operator Was Able To Be Applied, False Otherwise </returns>
+    private bool Pop2Val1OpEval(Stack<char> operatorStack, Stack<double> valueStack, out double val)
+    {
+        val = Double.MinValue;
+        double b = valueStack.Pop();
+        double a = valueStack.Pop();
+        switch (operatorStack.Pop())
+        {
+            case '*': 
+                val = a * b;
+                return true;
+            case '/':
+                if (b == 0) return false;
+                val = a / b; 
+                return true;
+            case '+': 
+                val = a + b; 
+                return true;
+            case '-': 
+                val = a - b; 
+                return true;
+        }
+        // Because Of The Nature Of The Code And The Compiler Forcing Return Types Under All Conditions,
+        // This Code Cant Be Removed Cause It Won't Compile, And The Compiler Cant Be Told It Cant Branch This Way
+        // Cause An Operator Could "In Theory" Be Any Char (But Will Never Happen Because Of The Formula Validation In Constructor)
+        return false; 
+    }
+
+    private double TryGetValueOfToken(string token, Lookup lookup, out bool didParse)
+    {
+        didParse = Double.TryParse(token, out double value);
+        if (!didParse && IsVar(token))
+        {
+            try
+            {
+                value = lookup(token);
+                didParse = true;
+            }
+            catch (ArgumentException)
+            {
+                didParse = false;
+                value = Double.MinValue;
+            }
+        }
+
+        return value;
+    }
+    
+    /// <summary>
+    ///   <para>
+    ///     Evaluates this Formula, using the lookup delegate to determine the values of
+    ///     variables.
+    ///   </para>
+    ///   <remarks>
+    ///     When the lookup method is called, it will always be passed a normalized (capitalized)
+    ///     variable name.  The lookup method will throw an ArgumentException if there is
+    ///     not a definition for that variable token.
+    ///   </remarks>
+    ///   <para>
+    ///     If no undefined variables or divisions by zero are encountered when evaluating
+    ///     this Formula, the numeric value of the formula is returned.  Otherwise, a
+    ///     FormulaError is returned (with a meaningful explanation as the Reason property).
+    ///   </para>
+    ///   <para>
+    ///     This method should never throw an exception.
+    ///   </para>
+    /// </summary>
+    /// <param name="lookup">
+    ///   <para>
+    ///     Given a variable symbol as its parameter, lookup returns the variable's value
+    ///     (if it has one) or throws an ArgumentException (otherwise).  This method will expect
+    ///     variable names to be normalized.
+    ///   </para>
+    /// </param>
+    /// <returns> Either a double or a FormulaError, based on evaluating the formula.</returns>
+    public object Evaluate( Lookup lookup )
+    { 
+        // The Only Errors That Can Occur Are Division By 0 And Undefined Variables
+        
+        Stack<char> operatorStack = new();
+        Stack<double> valueStack = new();
+        
+        foreach (string token in GetTokens(_canonicalString))
+        {
+            // Handle Both Variables And Doubles As They Are Treated The Same (At Least Once Parsed In The Variable's Case)
+            double resultOfNumber = TryGetValueOfToken(token, lookup, out bool didParseCorrectly);
+            // If It Did Not Parse Correctly, And The Value Is Double.MinValue (Compared With Tolerance)
+            // Then We Know The Variable Was The Cause Of The Issue
+            if (!didParseCorrectly && Math.Abs(resultOfNumber-Double.MinValue) < 1e-9)
+            {
+                return new FormulaError("Couldn't Parse Variable '" + token + "'");
+            }
+            
+            if (didParseCorrectly)
+            {
+                if (operatorStack.StackHasEitherOp('*', '/'))
+                {
+                    char op = operatorStack.Pop();
+                    double operandA = valueStack.Pop(), operandB = resultOfNumber;
+                    
+                    if (op == '/' && resultOfNumber == 0)
+                    {
+                        return new FormulaError("Division By 0 Error");
+                    }
+                    
+                    valueStack.Push(op == '*' ? operandA * operandB : operandA / operandB);
+                }
+                else
+                {
+                    valueStack.Push(resultOfNumber);
+                }
+            }
+            else if (token == "+" || token == "-")
+            {
+                if (operatorStack.StackHasEitherOp('+', '-') && Pop2Val1OpEval(operatorStack, valueStack, out double val))
+                {
+                    valueStack.Push(val);
+                }
+                operatorStack.Push(token[0]);
+            }
+            else if (token == "*" || token == "/")
+            {
+                operatorStack.Push(token[0]);
+            } 
+            else if (token == "(")
+            {
+                operatorStack.Push('(');
+            }
+            else if (token == ")")
+            {
+                if (operatorStack.StackHasEitherOp('+', '-') && Pop2Val1OpEval(operatorStack, valueStack, out double val1))
+                {
+                    valueStack.Push(val1);
+                }
+                
+                // PS4: "Next, the top of the operator stack will be a '('. Pop it."
+                operatorStack.Pop();
+                
+                if (operatorStack.StackHasEitherOp('*', '/') && Pop2Val1OpEval(operatorStack, valueStack, out double val2))
+                {
+                    valueStack.Push(val2);
+                }
+            }
+        }
+
+        if (operatorStack.Count <= 0)
+        {
+            return valueStack.Pop();
+        }
+        
+        // Since No Errors Should Be Able To Occur, Try Fearlessly Popping Twice
+        double lastB = valueStack.Pop();
+        double lastA = valueStack.Pop();
+        char lastOp = operatorStack.Pop();
+        
+        return lastOp == '+' ? lastA + lastB : lastA - lastB;    
+    }
+
+    /// <summary>
+    ///   <para>
+    ///     Returns a hash code for this Formula.  If f1.Equals(f2), then it must be the
+    ///     case that f1.GetHashCode() == f2.GetHashCode().  Ideally, the probability that two
+    ///     randomly-generated unequal Formulas have the same hash code should be miniscule.
+    ///   </para>
+    /// </summary>
+    /// <returns> The hashcode for the object. </returns>
+    public override int GetHashCode( )
+    {
+        // "Dont Repeat Yourself" Microsoft Already Made A Hashcode Function For Their Strings, So I'll Just Use That
+        // What This Means Is That If It Fails, Its Basically Microsoft's Fault (You've Heard Of Branchless Programing, Get Ready For Blameless Programming) 
+        
+        // Since All Formula Strings Should Be Converted To Their Canonical String (I.E. 2 Of The Same Formula Which May Have Different Formatting), This
+        // Gives The Bonus Of Not Having To Handle Different Formatting Cases Too
+        return _canonicalString.GetHashCode();
+    }
+    
+}
+
+
+/// <summary>
+///   Any method meeting this type signature can be used for
+///   looking up the value of a variable.
+/// </summary>
+/// <exception cref="ArgumentException">
+///   If a variable name is provided that is not recognized by the implementing method,
+///   then the method should throw an ArgumentException.
+/// </exception>
+/// <param name="variableName">
+///   The name of the variable (e.g., "A1") to lookup.
+/// </param>
+/// <returns> The value of the given variable (if one exists). </returns>
+public delegate double Lookup( string variableName );
+
+
+/// <summary>
+/// Used as a possible return value of the Formula.Evaluate method.
+/// </summary>
+public class FormulaError
+{
+    /// <summary>
+    ///   Initializes a new instance of the <see cref="FormulaError"/> class.
+    ///   <para>
+    ///     Constructs a FormulaError containing the explanatory reason.
+    ///   </para>
+    /// </summary>
+    /// <param name="message"> Contains a message for why the error occurred.</param>
+    public FormulaError( string message )
+    {
+        Reason = message;
+    }
+
+    /// <summary>
+    ///  Gets the reason why this FormulaError was created.
+    /// </summary>
+    public string Reason { get; private set; }
 }
 
 
@@ -402,5 +684,27 @@ public class FormulaFormatException : Exception
         : base( message )
     {
         // All this does is call the base constructor. No extra code needed.
+    }
+}
+
+
+/// <summary>
+///     The Purpose Of These Extensions Is To Simplify Common Operations In The 2 Stack Algorithms 
+/// </summary>
+public static class StackExtensions
+{
+    extension(Stack<char> stack)
+    {
+        /// <summary>
+        /// This Is Primarily Used In The Case Of Checking Whether One Of Two Operators Is On The Stack.
+        /// This Is Helpful Because + And - As Well As * And / Have The Same Precedence
+        ///
+        /// Note: This Is Merely A Check, Not A Popping/Pushing Operation
+        /// </summary>
+        /// <param name="a"> First Operator To Check For </param>
+        /// <param name="b"> Second Operator To Check For </param>
+        /// <returns> Returns True If There Is An Object On Top Of The Stack, Otherwise False </returns>
+        public bool StackHasEitherOp(char a, char b) => 
+            stack.TryPeek(out char op) && op == a || op == b; 
     }
 }
