@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 namespace Spreadsheets;
 
 using Formula;
+using DependencyGraph;
 
 /// <summary>
 ///   <para>
@@ -198,7 +199,7 @@ public class Spreadsheet
     /// <summary>
     /// This Will Store All The Non-Empty Cells As Well Their Dependents And Dependees
     /// </summary>
-    private DependencyGraph.DependencyGraph _dependencyGraph = new();
+    private DependencyGraph _dependencyGraph = new();
 
     /// <summary>
     ///     The cells which are stored along with their position (i.e. "A1")
