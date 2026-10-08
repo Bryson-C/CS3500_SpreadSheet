@@ -600,6 +600,8 @@ public class Spreadsheet
         }
         catch (Exception e)
         {
+            // SpreadsheetReadWriteException is the catch all exception, catch and throw it as the new exception with
+            // the old message still attached
             throw new SpreadsheetReadWriteException("Failed Reading Spreadsheet Saved File: " + e.Message);
         }
     }

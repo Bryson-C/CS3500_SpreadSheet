@@ -291,7 +291,26 @@ public sealed class SpreadsheetTests
         Assert.AreEqual("D1", change2[3]);
         Assert.AreEqual("E1", change2[4]);
     }
+    
+    [TestMethod]
+    public void SpreadSheetConstructor_ReadInvalidFile_ThrowReadWriteException()
+    {
+        // save stage
+        {
+            File.WriteAllText("InvalidFileContents.json", "{\"Cells\":{\"A1\":{\"StringForm\":\"= I Somehow Got Passed Every Other Check\"}}}");
+        }
+        // load stage
+        Assert.Throws<SpreadsheetReadWriteException>(() => new Spreadsheet("InvalidFileContents.json"));
+    }
 
+    [TestMethod]
+    public void SpreadSheetSave_TrySaveInvalidFile_ThrowReadWriteException()
+    {
+        Spreadsheet ss = new();
+        ss.SetContentsOfCell("A1", "100");
+        Assert.Throws<SpreadsheetReadWriteException>(() => ss.Save("/"));
+    }
+    
     [TestMethod]
     public void GetCellValues_ValidInputTypes_Valid()
     {
@@ -335,13 +354,25 @@ public sealed class SpreadsheetTests
     }
     
     [TestMethod]
-    public void GetCellValues_SaveInvalidCell_CircularExceptionThrow()
+    public void GetCellValues_TrySaveAndLoadCircularDep_CircularExceptionThrowNotSaved()
     {
-        Spreadsheet ss = new();
-        ss.SetContentsOfCell("A1", "=A2");
-        ss.Save("TestSaveInvalidCell.json");
+        {
+            Spreadsheet ss = new();
+            ss.SetContentsOfCell("A1", "=A2");
+            // since this throws, it should not be added to the spreadsheet
+            Assert.Throws<CircularException>(() => ss.SetContentsOfCell("A2", "=A1"));
+            ss.Save("TestSaveInvalidCell.json");
+        }
+
+        {
+            Spreadsheet ss = new("TestSaveInvalidCell.json");
+            // we know that only 1 cell should be non-empty
+            Assert.HasCount(1,ss.GetNamesOfAllNonemptyCells());
+            // we also know it should be A1
+            Assert.Contains("A1",ss.GetNamesOfAllNonemptyCells());
+        }
+        
+
     }
-    
-    
     
 }
