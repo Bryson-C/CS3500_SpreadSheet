@@ -7,6 +7,7 @@
 //     - Updated return types
 //     - Updated documentation
 
+using System.Collections;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -268,14 +269,16 @@ public class Spreadsheet
     /// </returns>
     public object GetCellContents(string name)
     {
-        // Here we dont need to check if the name is invalid, as there will never
-        // be a named value pushed to the "_contentCells" map which is invalid (because its checked before
-        // it is set in "SetCellContents")
-        if (!_contentCells.ContainsKey(name))
+        if (!IsValidVarName(name))
         {
             throw new InvalidNameException();
         }
-        return _contentCells[name].GetCellData();
+        else if (_contentCells.ContainsKey(name))
+        {
+            return _contentCells[name].GetCellData();
+        }
+
+        return String.Empty;
     }
 
     /// <summary>
@@ -391,23 +394,31 @@ public class Spreadsheet
             _contentCells.Add(name, new Cell(formula));
         }
         
+
+        // old dependencies, save in case of circular dependency to "do nothing"
+        // basically just revert if erroneous
+        List<string> oldDeps = _dependencyGraph.GetDependees(name).ToList();
+        
         // add all the variables included in the formula as a dependency for the dependency graph
         foreach (var v in formula.GetVariables())
         {
             _dependencyGraph.AddDependency(v, name);
         }
+        
         try
         {
             return GetCellsToRecalculate(name).ToList();
         }
-        catch (CircularException e)
+        catch (CircularException _)
         {
-            foreach (var v in formula.GetVariables())
+            // the only way to trigger a circular exception would be if the
+            // dependees changed, so check for that, if error, revert
+            if (!_dependencyGraph.GetDependees(name).Equals(oldDeps))
             {
-                _dependencyGraph.RemoveDependency(v,name);
+                _dependencyGraph.ReplaceDependees(name, oldDeps);
             }
-            _contentCells.Remove(name);
 
+            _contentCells.Remove(name);
             throw;
         }
     }
@@ -651,6 +662,11 @@ public class Spreadsheet
             throw new InvalidNameException();
         }
 
+        if (!_contentCells.ContainsKey(name))
+        {
+            return String.Empty;
+        }
+
         if (_contentCells[name].IsDoubleType(out double result))
         {
             return result;
@@ -672,7 +688,7 @@ public class Spreadsheet
         // So the only valid value we could have is a formula error
         return new FormulaError("Failed Evaluating Formula '" + _contentCells[name] + "'");
     }
-
+    
     /// <summary>
     ///   <para>
     ///     Set the contents of the named cell to be the provided string
@@ -740,6 +756,17 @@ public class Spreadsheet
           if (!IsValidVarName(name))
           {
               throw new InvalidNameException();
+          }
+          
+          // no content is provided, this is the same as deleting a cell
+          if (content.Length <= 0)
+          {
+              foreach (var v in _dependencyGraph.GetDependees(name))
+              {
+                  _dependencyGraph.RemoveDependency(v,name);
+              }
+              _contentCells.Remove(name);
+              return GetCellsToRecalculate(name).ToList();
           }
           
           // 1. if double

@@ -220,6 +220,25 @@ public sealed class SpreadsheetTests
     }
 
     [TestMethod]
+    public void SetContentsOfCell_RemoveMiddleDependency_RemovedFromDependencyGraphEntirely()
+    {
+        Spreadsheet ss = new();
+        // 10 -> A2 -> A3
+        ss.SetContentsOfCell("A1", "10");
+        ss.SetContentsOfCell("A2", "=A1");
+        ss.SetContentsOfCell("A3", "=A2");
+        // Change the above to:
+        // 10 -> A3, make sure there is no trace of A2
+        ss.SetContentsOfCell("A2", "");
+        // Make sure it does not contain
+        Assert.DoesNotContain("A2", ss.GetNamesOfAllNonemptyCells());
+        // Make sure no contents is gotten when requesting A2 now
+        Assert.AreEqual("", ss.GetCellContents("A2"));
+        // Make sure value is also empty
+        Assert.AreEqual("", ss["A2"]);
+    }
+    
+    [TestMethod]
     public void SpreadSheetConstructor_FailFileRead_NewEmptySpreadSheet()
     {
         Assert.Throws<SpreadsheetReadWriteException>(() => new Spreadsheet("/File/That/Does/Not/Exist.json"));
@@ -352,6 +371,13 @@ public sealed class SpreadsheetTests
         Spreadsheet ss = new();
         Assert.Throws<InvalidNameException>(() => ss["randomcell"]);
     }
+
+    [TestMethod]
+    public void GetCellValues_EmptyCell_EmptyString()
+    {
+        Spreadsheet ss = new();
+        Assert.AreEqual("", ss.GetCellContents("A1"));
+    }
     
     [TestMethod]
     public void GetCellValues_TrySaveAndLoadCircularDep_CircularExceptionThrowNotSaved()
@@ -361,6 +387,9 @@ public sealed class SpreadsheetTests
             ss.SetContentsOfCell("A1", "=A2");
             // since this throws, it should not be added to the spreadsheet
             Assert.Throws<CircularException>(() => ss.SetContentsOfCell("A2", "=A1"));
+            // make sure that A2 is not added to the spreadsheet
+            Assert.DoesNotContain("A2", ss.GetNamesOfAllNonemptyCells());
+            
             ss.Save("TestSaveInvalidCell.json");
         }
 
